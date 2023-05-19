@@ -49,6 +49,8 @@ func main() {
 
 	confDBPath := set.String("db-path", "gonic.db", "path to database (optional)")
 
+	confTranscodeProfilePath := set.String("transcodeprofile-path", "transcodeprofile.toml", "path to transcodeprofile.toml (optional)")
+
 	confScanIntervalMins := set.Int("scan-interval", 0, "interval (in minutes) to automatically scan music (optional)")
 	confScanAtStart := set.Bool("scan-at-start-enabled", false, "whether to perform an initial scan at startup (optional)")
 	confScanWatcher := set.Bool("scan-watcher-enabled", false, "whether to watch file system for new music and rescan (optional)")
@@ -118,6 +120,10 @@ func main() {
 		log.Fatalf("error opening database: %v\n", err)
 	}
 	defer dbc.Close()
+
+	if *confTranscodeProfilePath, err = validatePath(*confTranscodeProfilePath); err != nil {
+		log.Fatalf("checking transcode profile file: %v", err)
+	}
 
 	err = dbc.Migrate(db.MigrationContext{
 		OriginalMusicPath: confMusicPaths[0].path,
