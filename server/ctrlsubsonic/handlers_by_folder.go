@@ -3,7 +3,6 @@ package ctrlsubsonic
 import (
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/jinzhu/gorm"
@@ -81,10 +80,9 @@ func (c *Controller) ServeGetMusicDirectory(r *http.Request) *spec.Response {
 		Where("parent_id=?", id.Value).
 		Preload("AlbumStar", "user_id=?", user.ID).
 		Preload("AlbumRating", "user_id=?", user.ID).
+		Order("tag_year").
 		Order("albums.right_path COLLATE NOCASE").
 		Find(&childFolders)
-	// sort by TagYear
-	sort.Slice(childFolders, func(i, j int) bool { return childFolders[i].TagYear < childFolders[j].TagYear })
 
 	for _, ch := range childFolders {
 		childrenObj = append(childrenObj, spec.NewTCAlbumByFolder(ch))
@@ -99,11 +97,9 @@ func (c *Controller) ServeGetMusicDirectory(r *http.Request) *spec.Response {
 		Preload("Artists").
 		Preload("TrackStar", "user_id=?", user.ID).
 		Preload("TrackRating", "user_id=?", user.ID).
+		Order("tag_track_number").
 		Order("filename").
 		Find(&childTracks)
-
-	// sort by tracknumber for if file name is 1, 2, ... 10, 11...
-	sort.Slice(childTracks, func(i, j int) bool { return childTracks[i].TagTrackNumber < childTracks[j].TagTrackNumber })
 
 	transcodeMeta := streamGetTranscodeMeta(c.dbc, user.ID, params.GetOr("c", ""))
 
