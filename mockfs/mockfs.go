@@ -287,6 +287,21 @@ func (m *MockFS) SetTrack(path string, cb func(*TagInfo)) {
 	cb(m.tagReader.paths[abspath])
 }
 
+func (m *MockFS) SetAudio(path string, length time.Duration, bitrate uint, audioSrcPath string) {
+	data, err := os.ReadFile(audioSrcPath)
+	if err != nil {
+		m.t.Fatalf("read audio src: %v", err)
+	}
+	m.SetTrack(path, func(info *TagInfo) {
+		info.Length = length
+		info.Bitrate = bitrate
+	})
+	abspath := filepath.Join(m.dir, path)
+	if err := os.WriteFile(abspath, data, 0o644); err != nil {
+		m.t.Fatalf("write audio: %v", err)
+	}
+}
+
 func (m *MockFS) AddCover(path string) {
 	abspath := filepath.Join(m.dir, path)
 	if err := os.MkdirAll(filepath.Dir(abspath), os.ModePerm); err != nil {

@@ -1,6 +1,6 @@
 module go.senan.xyz/gonic
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible

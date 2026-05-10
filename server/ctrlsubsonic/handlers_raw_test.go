@@ -216,6 +216,9 @@ func TestServeStreamUsesDefaultMP3WhenBitRateRequestedWithoutPreference(t *testi
 	require.Equal(t, "audio/mpeg", rr.Header().Get("Content-Type"))
 }
 
+const mockUsername = "admin"
+const audioPath10s = "testdata/audio/10s.flac"
+
 type spyTranscoder struct {
 	calls   int
 	profile transcode.Profile
@@ -266,7 +269,7 @@ func makeStreamControllerWithBitrate(t *testing.T, bitrate uint) (*Controller, *
 }
 
 func makeStreamHTTPMock(user *db.User, path string, query url.Values) (*httptest.ResponseRecorder, *http.Request) {
-	rr, req := makeHTTPMock(query)
+	rr, req := makeHTTPMock(query, user)
 	req.URL.Path = path
 	ctx := context.WithValue(req.Context(), CtxUser, user)
 	req = req.WithContext(ctx)
