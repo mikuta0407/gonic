@@ -102,6 +102,7 @@ func main() {
 
 	confTranscodeCacheSize := flag.Int("transcode-cache-size", 0, "size of the transcode cache in MB (0 = no limit) (optional)")
 	confTranscodeEjectInterval := flag.Int("transcode-eject-interval", 0, "interval (in minutes) to eject transcode cache (0 = never) (optional)")
+	confTranscodeMP3BitRate := flag.Uint("transcode-mp3-bitrate", 128, "default bitrate in kbps for mp3 transcoding (optional)")
 
 	confCoverCacheSize := flag.Int("cover-cache-size", 0, "size of the cover art cache in MB (0 = no limit) (optional)")
 	confCoverEjectInterval := flag.Int("cover-eject-interval", 0, "interval (in minutes) to eject cover art cache (0 = never) (optional)")
@@ -195,6 +196,12 @@ func main() {
 	if confMultiValueArtist.Mode != confMultiValueAlbumArtist.Mode {
 		log.Panic("differing multi artist and album artist modes have been tested yet. please set them to be the same")
 	}
+	if *confTranscodeMP3BitRate == 0 {
+		log.Fatalf("transcode-mp3-bitrate must be greater than 0")
+	}
+	transcode.UserProfiles = transcode.DefaultUserProfiles(transcode.UserProfileOptions{
+		DefaultMP3BitRate: transcode.BitRate(*confTranscodeMP3BitRate),
+	})
 
 	log.Printf("starting gonic v%s\n", gonic.Version)
 	log.Printf("provided config\n")

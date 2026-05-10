@@ -269,59 +269,68 @@ func coverForPlaylist(playlistStore *playlist.Store, id specid.ID) (*os.File, er
 	return os.Open(filepath.Join(playlistDir, cover))
 }
 
-func (c *Controller) ServeStream(w http.ResponseWriter, r *http.Request) *spec.Response {
+func (c *Controller) streamLocateAudioFile(r *http.Request) (specidpaths.Result, db.AudioFile, *spec.Response) {
 	params := r.Context().Value(CtxParams).(params.Params)
-	user := r.Context().Value(CtxUser).(*db.User)
 	id, err := params.GetID("id")
 	if err != nil {
-		return spec.NewError(10, "please provide an `id` parameter")
+		return nil, nil, spec.NewError(10, "please provide an `id` parameter")
 	}
 
 	file, err := specidpaths.Locate(c.dbc, id)
 	if err != nil {
-		return spec.NewError(0, "error looking up id %s: %v", id, err)
+		return nil, nil, spec.NewError(0, "error looking up id %s: %v", id, err)
 	}
 
 	audioFile, ok := file.(db.AudioFile)
 	if !ok {
-		return spec.NewError(0, "type of id does not contain audio")
+		return nil, nil, spec.NewError(0, "type of id does not contain audio")
 	}
 
-	maxBitRate, _ := params.GetInt("maxBitRate")
-	format, _ := params.Get("format")
+	return file, audioFile, nil
+}
+
+func serveRawAudio(w http.ResponseWriter, r *http.Request, file specidpaths.Result) {
+	http.ServeFile(w, r, file.AbsPath())
+}
+
+func (c *Controller) ServeStream(w http.ResponseWriter, r *http.Request) *spec.Response {
+	params := r.Context().Value(CtxParams).(params.Params)
+	user := r.Context().Value(CtxUser).(*db.User)
+	file, audioFile, errResp := c.streamLocateAudioFile(r)
+	if errResp != nil {
+		return errResp
+	}
+
+	requestedBitRate := params.GetFirstOrInt(0, "bitRate", "maxBitRate")
+	format := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(params.GetOr("format", ""))), ".")
 	timeOffset, _ := params.GetInt("timeOffset")
 
 	if format == "raw" {
-		http.ServeFile(w, r, file.AbsPath())
+		serveRawAudio(w, r, file)
 		return nil
 	}
 
 	client, _ := params.Get("c")
-	pref, err := streamGetTranscodePreference(c.dbc, user.ID, client)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return spec.NewError(0, "couldn't find transcode preference: %v", err)
+	profile, ok, err := streamGetTranscodeProfile(c.dbc, user.ID, client, format)
+	if err != nil {
+		return spec.NewError(0, "error resolving transcode profile: %v", err)
 	}
-	if pref == nil {
-		if maxBitRate > 0 && maxBitRate < audioFile.AudioBitrate() {
-			return spec.NewError(0, "param maxBitRate requested and no user transcode preferences found for user %q and client %q. please configure transcode settings if you want to transcode", user.Name, client)
-		}
-		log.Printf("serving raw file, no user transcode preferences found for user %q and client %q", user.Name, client)
-		http.ServeFile(w, r, file.AbsPath())
-		return nil
-	}
-
-	if maxBitRate >= audioFile.AudioBitrate() {
-		log.Printf("serving raw file, requested max bitrate %d is greater or equal to %d", maxBitRate, audioFile.AudioBitrate())
-		http.ServeFile(w, r, file.AbsPath())
-		return nil
-	}
-
-	profile, ok := transcode.UserProfiles[pref.Profile]
 	if !ok {
-		return spec.NewError(0, "unknown transcode user profile %q", pref.Profile)
+		if requestedBitRate > 0 && requestedBitRate < audioFile.AudioBitrate() {
+			profile, ok = transcode.UserProfiles["mp3"]
+			if !ok {
+				return spec.NewError(0, "default transcode profile %q is unavailable", "mp3")
+			}
+			log.Printf("using default transcode profile %q for user %q and client %q", "mp3", user.Name, client)
+		} else {
+			log.Printf("serving raw file, no transcode profile found for user %q and client %q", user.Name, client)
+			serveRawAudio(w, r, file)
+			return nil
+		}
 	}
-	if maxBitRate > 0 && int(profile.BitRate()) > maxBitRate {
-		profile = transcode.WithBitrate(profile, transcode.BitRate(maxBitRate))
+
+	if requestedBitRate > 0 {
+		profile = transcode.WithBitrate(profile, transcode.BitRate(requestedBitRate))
 	}
 	if timeOffset > 0 {
 		profile = transcode.WithSeek(profile, time.Second*time.Duration(timeOffset))
@@ -337,6 +346,16 @@ func (c *Controller) ServeStream(w http.ResponseWriter, r *http.Request) *spec.R
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+	return nil
+}
+
+func (c *Controller) ServeDownload(w http.ResponseWriter, r *http.Request) *spec.Response {
+	file, _, errResp := c.streamLocateAudioFile(r)
+	if errResp != nil {
+		return errResp
+	}
+
+	serveRawAudio(w, r, file)
 	return nil
 }
 
@@ -370,6 +389,30 @@ func streamGetTranscodePreference(dbc *db.DB, userID int, client string) (*db.Tr
 		return nil, fmt.Errorf("find transcode preference: %w", err)
 	}
 	return &pref, nil
+}
+
+func streamGetTranscodeProfile(dbc *db.DB, userID int, client string, format string) (transcode.Profile, bool, error) {
+	if format != "" {
+		profile, ok := transcode.UserProfiles[format]
+		if !ok {
+			return transcode.Profile{}, false, fmt.Errorf("unknown transcode format %q", format)
+		}
+		return profile, true, nil
+	}
+
+	pref, err := streamGetTranscodePreference(dbc, userID, client)
+	if err != nil {
+		return transcode.Profile{}, false, fmt.Errorf("find transcode preference: %w", err)
+	}
+	if pref == nil {
+		return transcode.Profile{}, false, nil
+	}
+
+	profile, ok := transcode.UserProfiles[pref.Profile]
+	if !ok {
+		return transcode.Profile{}, false, fmt.Errorf("unknown transcode user profile %q", pref.Profile)
+	}
+	return profile, true, nil
 }
 
 func streamGetTranscodeMeta(dbc *db.DB, userID int, client string) spec.TranscodeMeta {

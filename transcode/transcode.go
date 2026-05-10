@@ -18,19 +18,6 @@ type Transcoder interface {
 	Transcode(ctx context.Context, profile Profile, in string, out io.Writer) error
 }
 
-var UserProfiles = map[string]Profile{
-	"mp3":          MP3,
-	"mp3_320":      MP3320,
-	"mp3_rg":       MP3RG,
-	"opus_car":     OpusRGLoud,
-	"opus":         Opus,
-	"opus_rg":      OpusRG,
-	"opus_128_car": Opus128RGLoud,
-	"opus_128":     Opus128,
-	"opus_128_rg":  Opus128RG,
-	"opus_192":     Opus192,
-}
-
 // Store as simple strings, since we may let the user provide their own profiles soon
 var (
 	MP3    = NewProfile("audio/mpeg", "mp3", 128, `ffmpeg -v 0 -i <file> -ss <seek> -map 0:a:0 -vn -b:a <bitrate> -c:a libmp3lame -f mp3 -`)
@@ -78,6 +65,32 @@ func WithSeek(p Profile, seek time.Duration) Profile {
 	p.seek = seek
 	return p
 }
+
+type UserProfileOptions struct {
+	DefaultMP3BitRate BitRate
+}
+
+func DefaultUserProfiles(opts UserProfileOptions) map[string]Profile {
+	defaultMP3BitRate := MP3.BitRate()
+	if opts.DefaultMP3BitRate > 0 {
+		defaultMP3BitRate = opts.DefaultMP3BitRate
+	}
+
+	return map[string]Profile{
+		"mp3":          WithBitrate(MP3, defaultMP3BitRate),
+		"mp3_320":      MP3320,
+		"mp3_rg":       WithBitrate(MP3RG, defaultMP3BitRate),
+		"opus_car":     OpusRGLoud,
+		"opus":         Opus,
+		"opus_rg":      OpusRG,
+		"opus_128_car": Opus128RGLoud,
+		"opus_128":     Opus128,
+		"opus_128_rg":  Opus128RG,
+		"opus_192":     Opus192,
+	}
+}
+
+var UserProfiles = DefaultUserProfiles(UserProfileOptions{})
 
 var ErrNoProfileParts = fmt.Errorf("not enough profile parts")
 

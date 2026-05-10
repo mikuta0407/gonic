@@ -52,6 +52,7 @@ cache-path                  /var/cache/gonic
 # Option to eject least recently used items from transcode cache.
 #transcode-cache-size		5000 # in Mb (0 = no limit)
 #transcode-eject-interval	1440 # in minutes (0 = never eject)
+#transcode-mp3-bitrate	128 # default kbps for mp3/mp3_rg profiles
 
 # Interval (in minutes) to check for new music. Default: don't scan
 #scan-interval               0

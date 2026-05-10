@@ -138,7 +138,7 @@ func New(dbc *db.DB, scannr *scanner.Scanner, musicPaths []MusicPath, podcastsPa
 	// raw
 	c.Handle("/getCoverArt", chainRaw(respRaw(c.ServeGetCoverArt)))
 	c.Handle("/stream", chainRaw(respRaw(c.ServeStream)))
-	c.Handle("/download", chainRaw(respRaw(c.ServeStream)))
+	c.Handle("/download", chainRaw(respRaw(c.ServeDownload)))
 	c.Handle("/getAvatar", chainRaw(respRaw(c.ServeGetAvatar)))
 
 	// browse by tag
